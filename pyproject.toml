@@ -41,9 +41,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/AsafShai/fantasynbaleaguemcp"
-Repository = "https://github.com/AsafShai/fantasynbaleaguemcp"
-Documentation = "https://github.com/AsafShai/fantasynbaleaguemcp#readme"
+Homepage = "https://github.com/AsafShai/nba-fantasy-israel-mcp
+"
+Repository = "https://github.com/AsafShai/nba-fantasy-israel-mcp
+"
+Documentation = "https://github.com/AsafShai/nba-fantasy-israel-mcp
+#readme"
 
 [project.scripts]
 fantasy-nba-israel-mcp = "fantasy_nba_israel_mcp.__main__:main"
