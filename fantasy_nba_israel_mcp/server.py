@@ -5,7 +5,7 @@ import httpx
 
 mcp = FastMCP("fantasy-nba-israel-mcp")
 
-BASE_URL = "https://fantasyaverageweb.onrender.com/api"
+BACKEND_API_URL = "https://fantasyaverageweb.onrender.com/api"
 
 @mcp.tool()
 def getAveragesLeagueRankings(order: str = "desc"):
@@ -37,7 +37,7 @@ def getAveragesLeagueRankings(order: str = "desc"):
             }"
     """
     try:
-        response = httpx.get(f"{BASE_URL}/rankings?order={order}", timeout=10)
+        response = httpx.get(f"{BACKEND_API_URL}/rankings?order={order}", timeout=10)
         return response.json()['rankings']
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
@@ -58,7 +58,7 @@ def getTeams():
         }
     """
     try:
-        response = httpx.get(f"{BASE_URL}/teams/", timeout=10)
+        response = httpx.get(f"{BACKEND_API_URL}/teams/", timeout=10)
         return response.json()
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
@@ -97,7 +97,7 @@ def getAverageStats(use_normalized: bool = False):
         }
     """
     try:
-        response = httpx.get(f"{BASE_URL}/analytics/heatmap", timeout=10)
+        response = httpx.get(f"{BACKEND_API_URL}/analytics/heatmap", timeout=10)
         response_data = response.json()
         
         categories = response_data['categories']
@@ -161,7 +161,7 @@ def getTeamPlayers(team_id: int):
         }
     """
     try:
-        response = httpx.get(f"{BASE_URL}/teams/{team_id}/players", timeout=10)
+        response = httpx.get(f"{BACKEND_API_URL}/teams/{team_id}/players", timeout=10)
         return response.json()["players"]
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
@@ -199,7 +199,7 @@ def getAllPlayers():
         }
     """
     try:
-        response = httpx.get(f"{BASE_URL}/players/", timeout=10)
+        response = httpx.get(f"{BACKEND_API_URL}/players/", timeout=10)
         return response.json()
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
