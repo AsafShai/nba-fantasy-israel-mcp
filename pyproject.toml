@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "A Model Context Protocol server for accessing our Fantasy NBA League statistics and rankings"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
 authors = [
     {name = "Asaf Shai", email = "asafshai211@gmail.com"}
 ]
@@ -28,7 +27,6 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

@@ -132,11 +132,11 @@ A list of teams with their IDs and names.
 [
   {
     "team_id": 1,
-    "team_name": "Asaf's Astounding Team"
+    "team_name": "First team example"
   },
   {
     "team_id": 2,
-    "team_name": "TRUST THE PROCESS"
+    "team_name": "Another team name"
   }
 ]
 ```
@@ -155,7 +155,7 @@ A list of teams with their stats mapped by category name.
 ```json
 [
   {
-    "team": "Asaf's Astounding Team",
+    "team": "First team example",
     "stats": {
       "FG%": 0.48532033,
       "FT%": 0.80961071,
@@ -262,14 +262,6 @@ uv run mcp dev fantasy_nba_israel_mcp/server.py
 ```
 
 The MCP inspector will provide an interactive interface to test all your tools.
-
-## Publishing to PyPI
-
-See [PUBLISHING.md](PUBLISHING.md) for detailed instructions on how to publish this package to PyPI.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Author
 
