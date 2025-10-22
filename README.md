@@ -12,25 +12,37 @@ This MCP server connects to a specific Fantasy NBA League API (Fantasy NBA Israe
 
 - **Get Average League Rankings**: Retrieve team rankings with detailed statistics
   - Sort in ascending or descending order
-  - Detailed stats per category (FG%, FT%, 3PM, AST, REB, STL, BLK, PTS)
+  - Detailed stats per category (FG%, FT%, 3PM, AST, REB, STL, BLK, PTS, GP)
   - Total points and rank for each team
 - **Get Teams**: Retrieve list of all teams in the league
 - **Get Average Stats**: Get team statistics in a user-friendly format with stats mapped by category
   - Option to retrieve raw or normalized (0-1 scale) data
-- **Get Team Players**: Retrieve all players for a specific team with their stats
+  - Includes games played (GP) for each team
+- **Get Team Details**: Retrieve comprehensive details for a specific team
+  - Team statistics (totals and averages)
+  - Complete roster with player stats including minutes played
+  - ESPN team page URL
+  - Shot chart stats and ranking information
+  - Category ranks across all statistical categories
 - **Get All Players**: Retrieve all players in the league with comprehensive statistics
+  - Includes minutes played and games played for each player
+- **Get League Shots Stats**: Retrieve league-wide shooting statistics for all teams
 
-## Installation
+## Prerequisites
 
-```bash
-uv pip install fantasy-nba-israel-mcp
-```
+Before using this MCP server, you'll need:
 
-Or with regular pip:
+1. **`uv` or `uvx`**: A fast Python package installer and runner
+   - Install from [https://docs.astral.sh/uv/](https://docs.astral.sh/uv/)
+   - On macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+   - On Windows: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
-```bash
-pip install fantasy-nba-israel-mcp
-```
+2. **An MCP-compatible client**: Choose one of the following:
+   - [Claude Desktop](https://claude.ai/download) - AI assistant with MCP support
+   - [Cursor](https://cursor.sh/) - AI-powered code editor
+   - [VSCode](https://code.visualstudio.com/) with [GitHub Copilot Chat](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat)
+   - [Cline](https://github.com/cline/cline) - VSCode extension for AI assistance
+   - Any other MCP-compatible application
 
 ## Usage
 
@@ -111,6 +123,7 @@ A list of teams with their rankings, total points, and stats per category.
     "stl": 8.2,
     "blk": 5.4,
     "pts": 112.3,
+    "gp": 55,
     "total_points": 36,
     "rank": 1
   }
@@ -155,7 +168,10 @@ A list of teams with their stats mapped by category name.
 ```json
 [
   {
-    "team": "First team example",
+    "team": {
+      "team_id": 1,
+      "team_name": "First team example"
+    },
     "stats": {
       "FG%": 0.48532033,
       "FT%": 0.80961071,
@@ -164,46 +180,102 @@ A list of teams with their stats mapped by category name.
       "REB": 6.75579976,
       "STL": 1.13919414,
       "BLK": 0.72405372,
-      "PTS": 17.5970696
+      "PTS": 17.5970696,
+      "GP": 55
     }
   }
 ]
 ```
 
-### getTeamPlayers
+### getTeamDetails
 
-Get all players for a specific team with their statistics.
+Get comprehensive details for a specific team including statistics, roster, and rankings.
 
 **Parameters:**
-- `team_id` (int): The ID of the team to get players for
+- `team_id` (int): The ID of the team to get details for
 
 **Returns:**
-A list of players with their stats.
+Comprehensive team information including team stats, ESPN URL, shot chart, rankings, and full roster.
 
 **Example Response:**
 ```json
-[
-  {
-    "player_name": "LeBron James",
-    "pro_team": "LAL",
-    "positions": ["SF", "PF"],
-    "stats": {
-      "pts": 25.4,
-      "reb": 7.3,
-      "ast": 7.4,
-      "stl": 1.3,
-      "blk": 0.5,
-      "fgm": 9.5,
-      "fga": 18.5,
-      "ftm": 4.8,
-      "fta": 6.3,
-      "fg_percentage": 0.513,
-      "ft_percentage": 0.762,
-      "three_pm": 2.1,
-      "gp": 55
+{
+  "team": {
+    "team_id": 1,
+    "team_name": "Team Name"
+  },
+  "espn_url": "https://fantasy.espn.com/basketball/team?leagueId=123&teamId=1",
+  "shot_chart": {
+    "team": {"team_id": 1, "team_name": "Team Name"},
+    "fgm": 14,
+    "fga": 23,
+    "fg_percentage": 0.608,
+    "ftm": 7,
+    "fta": 12,
+    "ft_percentage": 0.583,
+    "gp": 2
+  },
+  "raw_averages": {
+    "fg_percentage": 0.608,
+    "ft_percentage": 0.583,
+    "three_pm": 0.5,
+    "ast": 4.5,
+    "reb": 5.5,
+    "stl": 1.0,
+    "blk": 0.5,
+    "pts": 18.0,
+    "gp": 2,
+    "team": {"team_id": 1, "team_name": "Team Name"}
+  },
+  "ranking_stats": {
+    "team": {"team_id": 1, "team_name": "Team Name"},
+    "fg_percentage": 12.0,
+    "ft_percentage": 5.0,
+    "three_pm": 5.0,
+    "ast": 8.0,
+    "reb": 7.0,
+    "stl": 6.0,
+    "blk": 9.0,
+    "pts": 9.0,
+    "gp": 2,
+    "total_points": 61.0,
+    "rank": 6
+  },
+  "category_ranks": {
+    "FG%": 12,
+    "FT%": 5,
+    "3PM": 5,
+    "AST": 8,
+    "REB": 7,
+    "STL": 6,
+    "BLK": 9,
+    "PTS": 9
+  },
+  "players": [
+    {
+      "player_name": "LeBron James",
+      "pro_team": "LAL",
+      "positions": ["SF", "PF"],
+      "stats": {
+        "pts": 25.4,
+        "reb": 7.3,
+        "ast": 7.4,
+        "stl": 1.3,
+        "blk": 0.5,
+        "fgm": 9.5,
+        "fga": 18.5,
+        "ftm": 4.8,
+        "fta": 6.3,
+        "fg_percentage": 0.513,
+        "ft_percentage": 0.762,
+        "three_pm": 2.1,
+        "minutes": 35.2,
+        "gp": 55
+      },
+      "team_id": 1
     }
-  }
-]
+  ]
+}
 ```
 
 ### getAllPlayers
@@ -237,10 +309,55 @@ A list of all players with their stats and team association.
       "fg_percentage": 0.513,
       "ft_percentage": 0.762,
       "three_pm": 2.1,
+      "minutes": 35.2,
       "gp": 55
     }
   }
 ]
+```
+
+### getLeagueShotsStats
+
+Get league-wide shooting statistics for all teams.
+
+**Parameters:**
+None
+
+**Returns:**
+League-wide shooting statistics with field goal and free throw data for each team.
+
+**Example Response:**
+```json
+{
+  "shots": [
+    {
+      "team": {
+        "team_id": 1,
+        "team_name": "Team Name"
+      },
+      "fgm": 14,
+      "fga": 23,
+      "fg_percentage": 0.608,
+      "ftm": 7,
+      "fta": 12,
+      "ft_percentage": 0.583,
+      "gp": 2
+    },
+    {
+      "team": {
+        "team_id": 2,
+        "team_name": "Another Team"
+      },
+      "fgm": 12,
+      "fga": 20,
+      "fg_percentage": 0.600,
+      "ftm": 8,
+      "fta": 10,
+      "ft_percentage": 0.800,
+      "gp": 2
+    }
+  ]
+}
 ```
 
 ## Requirements

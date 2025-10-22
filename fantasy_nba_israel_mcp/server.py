@@ -34,7 +34,12 @@ def getAveragesLeagueRankings(order: str = "desc"):
             "pts": <pts>,
             "total_points": <total_points>,
             "rank": <rank>
+            "GP": <GP>,
             }"
+        in each statistical category (except for total points and rank), the higher thee value is, the better the team is.
+        for example, for 12 teams league, the best team in assists has 12, the next 11 and so on.
+        total points is the sum of the points in all categories, so the best team in total points has the most points.
+        rank is the rank of the team in the league, the best team has rank 1, the next 2 and so on.
     """
     try:
         response = httpx.get(f"{BACKEND_API_URL}/rankings?order={order}", timeout=10)
@@ -92,7 +97,8 @@ def getAverageStats(use_normalized: bool = False):
                 "REB": <value>,
                 "STL": <value>,
                 "BLK": <value>,
-                "PTS": <value>
+                "PTS": <value>,
+                "GP": <value>,
             }
         }
     """
@@ -131,38 +137,95 @@ def getAverageStats(use_normalized: bool = False):
         return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
 
 @mcp.tool()
-def getTeamPlayers(team_id: int):
+def getTeamDetails(team_id: int):
     """
-    Get the list of players for a team from the API.
+    Get comprehensive details for a specific team from the API.
+
     Args:
-        team_id: The ID of the team to get the players for.
+        team_id: The ID of the team to get details for.
+
     Returns:
-        A list of players for the team.
-        
-        each item in the list is a dictionary with the following keys: {
-            "player_name": <player_name>,
-            "pro_team": <pro_team>,
-            "positions": <positions>,
-            "stats": {
-                "pts": <pts>,
-                "reb": <reb>,
-                "ast": <ast>,
-                "stl": <stl>,
-                "blk": <blk>,
-                "fgm": <fgm>,
-                "fga": <fga>,
-                "ftm": <ftm>,
-                "fta": <fta>
-                "fg_percentage": <fg_percentage>,
-                "ft_percentage": <ft_percentage>,
-                "three_pm": <three_pm>,
-                "gp": <gp>
-            }
+        A dictionary containing comprehensive team information: {
+            "team": {
+                "team_id": <team_id>,
+                "team_name": <team_name>
+            },
+            "espn_url": <espn_team_page_url>,
+            "shot_chart": {
+                "team": {"team_id": <id>, "team_name": <name>},
+                "fgm": <field_goals_made>,
+                "fga": <field_goals_attempted>,
+                "fg_percentage": <field_goal_percentage>,
+                "ftm": <free_throws_made>,
+                "fta": <free_throws_attempted>,
+                "ft_percentage": <free_throw_percentage>,
+                "gp": <games_played>
+            },
+            "raw_averages": {
+                "fg_percentage": <avg_fg_percentage>,
+                "ft_percentage": <avg_ft_percentage>,
+                "three_pm": <avg_three_pointers_made>,
+                "ast": <avg_assists>,
+                "reb": <avg_rebounds>,
+                "stl": <avg_steals>,
+                "blk": <avg_blocks>,
+                "pts": <avg_points>,
+                "gp": <games_played>,
+                "team": {"team_id": <id>, "team_name": <name>}
+            },
+            "ranking_stats": {
+                "team": {"team_id": <id>, "team_name": <name>},
+                "fg_percentage": <rank_points>,
+                "ft_percentage": <rank_points>,
+                "three_pm": <rank_points>,
+                "ast": <rank_points>,
+                "reb": <rank_points>,
+                "stl": <rank_points>,
+                "blk": <rank_points>,
+                "pts": <rank_points>,
+                "gp": <games_played>,
+                "total_points": <total_rank_points>,
+                "rank": <overall_rank>
+            },
+            "category_ranks": {
+                "FG%": <rank_in_category>,
+                "FT%": <rank_in_category>,
+                "3PM": <rank_in_category>,
+                "AST": <rank_in_category>,
+                "REB": <rank_in_category>,
+                "STL": <rank_in_category>,
+                "BLK": <rank_in_category>,
+                "PTS": <rank_in_category>
+            },
+            "players": [
+                {
+                    "player_name": <player_name>,
+                    "pro_team": <pro_team>,
+                    "positions": <positions>,
+                    "stats": {
+                        "pts": <pts>,
+                        "reb": <reb>,
+                        "ast": <ast>,
+                        "stl": <stl>,
+                        "blk": <blk>,
+                        "fgm": <fgm>,
+                        "fga": <fga>,
+                        "ftm": <ftm>,
+                        "fta": <fta>,
+                        "fg_percentage": <fg_percentage>,
+                        "ft_percentage": <ft_percentage>,
+                        "three_pm": <three_pm>,
+                        "minutes": <minutes>,
+                        "gp": <gp>
+                    },
+                    "team_id": <team_id>
+                }
+            ]
         }
     """
     try:
-        response = httpx.get(f"{BACKEND_API_URL}/teams/{team_id}/players", timeout=10)
-        return response.json()["players"]
+        response = httpx.get(f"{BACKEND_API_URL}/teams/{team_id}", timeout=10)
+        return response.json()
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
     except httpx.TimeoutException as e:
@@ -193,6 +256,7 @@ def getAllPlayers():
                 "fg_percentage": <fg_percentage>,
                 "ft_percentage": <ft_percentage>,
                 "three_pm": <three_pm>,
+                "minutes": <minutes>,
                 "gp": <gp>
             },
             "team_id": <team_id>,
@@ -200,6 +264,43 @@ def getAllPlayers():
     """
     try:
         response = httpx.get(f"{BACKEND_API_URL}/players/", timeout=10)
+        return response.json()
+    except httpx.HTTPStatusError as e:
+        return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
+    except httpx.TimeoutException as e:
+        return {"error": "Request timed out. The backend server may be slow or unavailable."}
+    except Exception as e:
+        return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
+
+@mcp.tool()
+def getLeagueShotsStats():
+    """
+    Get league-wide shooting statistics for all teams.
+
+    Returns:
+        A dictionary containing league-wide shooting statistics: {
+            "shots": [
+                {
+                    "team": {
+                        "team_id": <team_id>,
+                        "team_name": <team_name>
+                    },
+                    "fgm": <field_goals_made>,
+                    "fga": <field_goals_attempted>,
+                    "fg_percentage": <field_goal_percentage>,
+                    "ftm": <free_throws_made>,
+                    "fta": <free_throws_attempted>,
+                    "ft_percentage": <free_throw_percentage>,
+                    "gp": <games_played>
+                }
+            ]
+        }
+
+        The list contains one entry per team with their shooting statistics.
+        Percentages are returned as decimals (e.g., 0.456 = 45.6%).
+    """
+    try:
+        response = httpx.get(f"{BACKEND_API_URL}/league/shots", timeout=10)
         return response.json()
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
