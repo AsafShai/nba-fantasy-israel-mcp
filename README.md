@@ -37,7 +37,7 @@ Before using this MCP server, you'll need:
    - On macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
    - On Windows: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
-2. **An MCP-compatible client**: Choose one of the following:
+2. **An MCP-compatible client**: Choose one of the following or similar:
    - [Claude Desktop](https://claude.ai/download) - AI assistant with MCP support
    - [Cursor](https://cursor.sh/) - AI-powered code editor
    - [VSCode](https://code.visualstudio.com/) with [GitHub Copilot Chat](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat)
