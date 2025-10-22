@@ -55,7 +55,7 @@ This server works with any MCP-compatible client (Claude Desktop, Cursor, Cline,
   "mcpServers": {
     "fantasynbaleague": {
       "command": "uvx",
-      "args": ["fantasy-nba-israel-mcp"]
+      "args": ["fantasy-nba-israel-mcp@latest"]
     }
   }
 }
