@@ -8,17 +8,19 @@ from fantasy_nba_israel_mcp.server import (
     getAveragesLeagueRankings,
     getTeams,
     getAverageStats,
-    getTeamPlayers,
-    getAllPlayers
+    getTeamDetails,
+    getAllPlayers,
+    getLeagueShotsStats
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
-    "mcp", 
-    "getAveragesLeagueRankings", 
-    "getTeams", 
-    "getAverageStats", 
-    "getTeamPlayers",
-    "getAllPlayers"
+    "mcp",
+    "getAveragesLeagueRankings",
+    "getTeams",
+    "getAverageStats",
+    "getTeamDetails",
+    "getAllPlayers",
+    "getLeagueShotsStats"
 ]
 
