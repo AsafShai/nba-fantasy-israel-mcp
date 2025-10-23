@@ -234,36 +234,74 @@ def getTeamDetails(team_id: int):
         return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
 
 @mcp.tool()
-def getAllPlayers():
+def getAllPlayers(page: int = 1, limit: int = 500):
     """
-    Get the list of all players from the API.
+    Get all players from the API with pagination support.
+    
+    This endpoint returns ALL players in the fantasy league including:
+    - Players currently on fantasy teams (status: "ONTEAM")
+    - Free agents available for pickup (status: "FREEAGENT")  
+    - Players on waivers (status: "WAIVERS")
+    
+    Args:
+        page: The page number to retrieve. Use this to paginate through large player lists.
+              Default is 1 (first page). Minimum value is 1.
+        limit: Number of players to return per page. This controls how many players
+               you get in a single request. Default is 500 (maximum allowed).
+               Valid range: 10-500 players per page.
+    
     Returns:
-        A list of all players.
-        each item in the list is a dictionary with the following keys: {
-            "player_name": <player_name>,
-            "pro_team": <pro_team>,
-            "positions": <positions>,
-            "stats": {
-                "pts": <pts>,
-                "reb": <reb>,
-                "ast": <ast>,
-                "stl": <stl>,
-                "blk": <blk>,
-                "fgm": <fgm>,
-                "fga": <fga>,
-                "ftm": <ftm>,
-                "fta": <fta>
-                "fg_percentage": <fg_percentage>,
-                "ft_percentage": <ft_percentage>,
-                "three_pm": <three_pm>,
-                "minutes": <minutes>,
-                "gp": <gp>
-            },
-            "team_id": <team_id>,
+        A paginated response object containing player data and pagination metadata.
+        The response is a dictionary with the following structure: {
+            "players": [
+                {
+                    "player_name": <string, e.g., "LeBron James">,
+                    "pro_team": <string, NBA team abbreviation, e.g., "LAL">,
+                    "positions": <list of strings, e.g., ["SF", "PF"]>,
+                    "stats": {
+                        "pts": <float, points per game>,
+                        "reb": <float, rebounds per game>,
+                        "ast": <float, assists per game>,
+                        "stl": <float, steals per game>,
+                        "blk": <float, blocks per game>,
+                        "fgm": <float, field goals made per game>,
+                        "fga": <float, field goals attempted per game>,
+                        "ftm": <float, free throws made per game>,
+                        "fta": <float, free throws attempted per game>,
+                        "fg_percentage": <float, field goal percentage as decimal (e.g., 0.456 = 45.6%)>,
+                        "ft_percentage": <float, free throw percentage as decimal (e.g., 0.850 = 85.0%)>,
+                        "three_pm": <float, three-pointers made per game>,
+                        "minutes": <float, minutes played per game>,
+                        "gp": <int, total games played>
+                    },
+                    "team_id": <int, fantasy team ID (0 if not on a team)>,
+                    "status": <string, one of: "ONTEAM", "FREEAGENT", "WAIVERS">
+                }
+            ],
+            "total_count": <int, total number of players across all pages>,
+            "page": <int, current page number>,
+            "limit": <int, players per page in this response>,
+            "has_more": <boolean, true if there are more pages available>
         }
+    
+    Example Usage:
+        - Get first 500 players: getAllPlayers()
+        - Get next 500 players: getAllPlayers(page=2)
+        - Get 100 players at a time: getAllPlayers(limit=100)
+        - Get second page with 100 per page: getAllPlayers(page=2, limit=100)
+    
+    Notes:
+        - Use the "status" field to filter between rostered players, free agents, and waivers
+        - Use "has_more" to determine if you need to fetch additional pages
+        - "total_count" tells you the total number of players available
+        - All stats are averaged per game except "gp" which is total games played
     """
     try:
-        response = httpx.get(f"{BACKEND_API_URL}/players/", timeout=10)
+        response = httpx.get(
+            f"{BACKEND_API_URL}/players/",
+            params={"page": page, "limit": limit},
+            timeout=10
+        )
         return response.json()
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
