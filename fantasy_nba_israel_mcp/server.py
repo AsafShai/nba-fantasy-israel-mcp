@@ -239,82 +239,82 @@ def getTeamDetails(team_id: int):
     except Exception as e:
         return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
 
-@mcp.tool()
-def getAllPlayers(page: int = 1, limit: int = 500):
-    """
-    Get all players from the API with pagination support.
+# @mcp.tool()
+# def getAllPlayers(page: int = 1, limit: int = 500):
+#     """
+#     Get all players from the API with pagination support.
     
-    This endpoint returns ALL players in the fantasy league including:
-    - Players currently on fantasy teams (status: "ONTEAM")
-    - Free agents available for pickup (status: "FREEAGENT")  
-    - Players on waivers (status: "WAIVERS")
+#     This endpoint returns ALL players in the fantasy league including:
+#     - Players currently on fantasy teams (status: "ONTEAM")
+#     - Free agents available for pickup (status: "FREEAGENT")  
+#     - Players on waivers (status: "WAIVERS")
     
-    Args:
-        page: The page number to retrieve. Use this to paginate through large player lists.
-              Default is 1 (first page). Minimum value is 1.
-        limit: Number of players to return per page. This controls how many players
-               you get in a single request. Default is 500 (maximum allowed).
-               Valid range: 10-500 players per page.
+#     Args:
+#         page: The page number to retrieve. Use this to paginate through large player lists.
+#               Default is 1 (first page). Minimum value is 1.
+#         limit: Number of players to return per page. This controls how many players
+#                you get in a single request. Default is 500 (maximum allowed).
+#                Valid range: 10-500 players per page.
     
-    Returns:
-        A paginated response object containing player data and pagination metadata.
-        The response is a dictionary with the following structure: {
-            "players": [
-                {
-                    "player_name": <string, e.g., "LeBron James">,
-                    "pro_team": <string, NBA team abbreviation, e.g., "LAL">,
-                    "positions": <list of strings, e.g., ["SF", "PF"]>,
-                    "stats": {
-                        "pts": <int, total points>,
-                        "reb": <int, total rebounds>,
-                        "ast": <int, total assists>,
-                        "stl": <int, total steals>,
-                        "blk": <int, total blocks>,
-                        "fgm": <int, total field goals made>,
-                        "fga": <int, total field goals attempted>,
-                        "ftm": <int, total free throws made>,
-                        "fta": <int, total free throws attempted>,
-                        "fg_percentage": <float, field goal percentage as decimal (e.g., 0.456 = 45.6%)>,
-                        "ft_percentage": <float, free throw percentage as decimal (e.g., 0.850 = 85.0%)>,
-                        "three_pm": <int, total three-pointers made>,
-                        "minutes": <int, total minutes played>,
-                        "gp": <int, total games played>
-                    },
-                    "team_id": <int, fantasy team ID (0 if not on a team)>,
-                    "status": <string, one of: "ONTEAM", "FREEAGENT", "WAIVERS">
-                }
-            ],
-            "total_count": <int, total number of players across all pages>,
-            "page": <int, current page number>,
-            "limit": <int, players per page in this response>,
-            "has_more": <boolean, true if there are more pages available>
-        }
+#     Returns:
+#         A paginated response object containing player data and pagination metadata.
+#         The response is a dictionary with the following structure: {
+#             "players": [
+#                 {
+#                     "player_name": <string, e.g., "LeBron James">,
+#                     "pro_team": <string, NBA team abbreviation, e.g., "LAL">,
+#                     "positions": <list of strings, e.g., ["SF", "PF"]>,
+#                     "stats": {
+#                         "pts": <int, total points>,
+#                         "reb": <int, total rebounds>,
+#                         "ast": <int, total assists>,
+#                         "stl": <int, total steals>,
+#                         "blk": <int, total blocks>,
+#                         "fgm": <int, total field goals made>,
+#                         "fga": <int, total field goals attempted>,
+#                         "ftm": <int, total free throws made>,
+#                         "fta": <int, total free throws attempted>,
+#                         "fg_percentage": <float, field goal percentage as decimal (e.g., 0.456 = 45.6%)>,
+#                         "ft_percentage": <float, free throw percentage as decimal (e.g., 0.850 = 85.0%)>,
+#                         "three_pm": <int, total three-pointers made>,
+#                         "minutes": <int, total minutes played>,
+#                         "gp": <int, total games played>
+#                     },
+#                     "team_id": <int, fantasy team ID (0 if not on a team)>,
+#                     "status": <string, one of: "ONTEAM", "FREEAGENT", "WAIVERS">
+#                 }
+#             ],
+#             "total_count": <int, total number of players across all pages>,
+#             "page": <int, current page number>,
+#             "limit": <int, players per page in this response>,
+#             "has_more": <boolean, true if there are more pages available>
+#         }
     
-    Example Usage:
-        - Get first 500 players: getAllPlayers()
-        - Get next 500 players: getAllPlayers(page=2)
-        - Get 100 players at a time: getAllPlayers(limit=100)
-        - Get second page with 100 per page: getAllPlayers(page=2, limit=100)
+#     Example Usage:
+#         - Get first 500 players: getAllPlayers()
+#         - Get next 500 players: getAllPlayers(page=2)
+#         - Get 100 players at a time: getAllPlayers(limit=100)
+#         - Get second page with 100 per page: getAllPlayers(page=2, limit=100)
     
-    Notes:
-        - Use the "status" field to filter between rostered players, free agents, and waivers
-        - Use "has_more" to determine if you need to fetch additional pages
-        - "total_count" tells you the total number of players available
-        - All stats are averaged per game except "gp" which is total games played
-    """
-    try:
-        response = httpx.get(
-            f"{BACKEND_API_URL}/players/",
-            params={"page": page, "limit": limit},
-            timeout=10
-        )
-        return response.json()
-    except httpx.HTTPStatusError as e:
-        return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-    except httpx.TimeoutException as e:
-        return {"error": "Request timed out. The backend server may be slow or unavailable."}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
+#     Notes:
+#         - Use the "status" field to filter between rostered players, free agents, and waivers
+#         - Use "has_more" to determine if you need to fetch additional pages
+#         - "total_count" tells you the total number of players available
+#         - All stats are averaged per game except "gp" which is total games played
+#     """
+#     try:
+#         response = httpx.get(
+#             f"{BACKEND_API_URL}/players/",
+#             params={"page": page, "limit": limit},
+#             timeout=10
+#         )
+#         return response.json()
+#     except httpx.HTTPStatusError as e:
+#         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
+#     except httpx.TimeoutException as e:
+#         return {"error": "Request timed out. The backend server may be slow or unavailable."}
+#     except Exception as e:
+#         return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
 
 @mcp.tool()
 def getLeagueShotsStats():
