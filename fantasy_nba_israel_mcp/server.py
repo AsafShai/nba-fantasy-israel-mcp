@@ -222,6 +222,12 @@ def getTeamDetails(team_id: int):
                 }
             ]
         }
+        for the ranking stats:
+        in each statistical category (except for total points and rank), the higher thee value is, the better the team is.
+        for example, for 12 teams league, the best team in assists has 12, the next 11 and so on.
+        total points is the sum of the points in all categories, so the best team in total points has the most points.
+        rank is the rank of the team in the league, the best team has rank 1, the next 2 and so on.
+        also gp is not ranked, it is the total games played by the team.
     """
     try:
         response = httpx.get(f"{BACKEND_API_URL}/teams/{team_id}", timeout=10)
@@ -259,19 +265,19 @@ def getAllPlayers(page: int = 1, limit: int = 500):
                     "pro_team": <string, NBA team abbreviation, e.g., "LAL">,
                     "positions": <list of strings, e.g., ["SF", "PF"]>,
                     "stats": {
-                        "pts": <float, points per game>,
-                        "reb": <float, rebounds per game>,
-                        "ast": <float, assists per game>,
-                        "stl": <float, steals per game>,
-                        "blk": <float, blocks per game>,
-                        "fgm": <float, field goals made per game>,
-                        "fga": <float, field goals attempted per game>,
-                        "ftm": <float, free throws made per game>,
-                        "fta": <float, free throws attempted per game>,
+                        "pts": <int, total points>,
+                        "reb": <int, total rebounds>,
+                        "ast": <int, total assists>,
+                        "stl": <int, total steals>,
+                        "blk": <int, total blocks>,
+                        "fgm": <int, total field goals made>,
+                        "fga": <int, total field goals attempted>,
+                        "ftm": <int, total free throws made>,
+                        "fta": <int, total free throws attempted>,
                         "fg_percentage": <float, field goal percentage as decimal (e.g., 0.456 = 45.6%)>,
                         "ft_percentage": <float, free throw percentage as decimal (e.g., 0.850 = 85.0%)>,
-                        "three_pm": <float, three-pointers made per game>,
-                        "minutes": <float, minutes played per game>,
+                        "three_pm": <int, total three-pointers made>,
+                        "minutes": <int, total minutes played>,
                         "gp": <int, total games played>
                     },
                     "team_id": <int, fantasy team ID (0 if not on a team)>,
