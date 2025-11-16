@@ -105,6 +105,8 @@ def getAveragesLeagueRankings(order: str = "desc"):
     - "rank" field is opposite: lower number = better (1 is first place)
     - GP (games played) is informational only, not used in scoring
     - When referring to steals in Hebrew, use חטיפות (not גניבות)
+    - If you refer to comparing teams, distinguish between rank and total points, so f.e someone can be 1st place 70 total points and another team can be 2nd place 69 total points.
+    - In that case, the difference is 2 points, not 1 place.
     """
     try:
         response = httpx.get(f"{BACKEND_API_URL}/rankings?order={order}", timeout=10)
@@ -304,14 +306,14 @@ def getTeamDetails(team_id: int):
             },
             
             "category_ranks": {
-                "FG%": <position_in_field_goal_percentage_1_is_best>,
-                "FT%": <position_in_free_throw_percentage_1_is_best>,
-                "3PM": <position_in_three_pointers_1_is_best>,
-                "AST": <position_in_assists_1_is_best>,
-                "REB": <position_in_rebounds_1_is_best>,
-                "STL": <position_in_steals_1_is_best>,
-                "BLK": <position_in_blocks_1_is_best>,
-                "PTS": <position_in_points_1_is_best>
+                "FG%": <ranking_points_earned_in_fg_percentage>,
+                "FT%": <ranking_points_earned_in_ft_percentage>,
+                "3PM": <ranking_points_earned_in_three_pointers>,
+                "AST": <ranking_points_earned_in_assists>,
+                "REB": <ranking_points_earned_in_rebounds>,
+                "STL": <ranking_points_earned_in_steals>,
+                "BLK": <ranking_points_earned_in_blocks>,
+                "PTS": <ranking_points_earned_in_points>
             },
             
             "players": [
