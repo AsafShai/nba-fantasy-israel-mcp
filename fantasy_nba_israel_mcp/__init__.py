@@ -9,7 +9,8 @@ from fantasy_nba_israel_mcp.server import (
     getTeams,
     getAverageStats,
     getTeamDetails,
-    getLeagueShotsStats
+    getLeagueShotsStats,
+    query_team_scores_snapshots
 )
 
 __version__ = "0.2.0"
@@ -19,6 +20,7 @@ __all__ = [
     "getTeams",
     "getAverageStats",
     "getTeamDetails",
-    "getLeagueShotsStats"
+    "getLeagueShotsStats",
+    "querySnapshotDB"
 ]
 

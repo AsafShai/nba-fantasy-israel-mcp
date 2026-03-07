@@ -38,10 +38,40 @@ ROTISSERIE SCORING SYSTEM:
 
 from mcp.server.fastmcp import FastMCP
 import httpx
+import os
+import re
+import psycopg2
+import psycopg2.extras
+from dotenv import load_dotenv
+
+load_dotenv()
 
 mcp = FastMCP("fantasy-nba-israel-mcp")
 
 BACKEND_API_URL = "https://fantasyaverageweb.onrender.com/api"
+
+DATABASE_URL = os.environ.get("FANTASY_DB_URL", "")
+
+_db_connection = None
+
+
+def get_db_connection():
+    """Lazy connection with auto-reconnect. Creates on first use, reuses after."""
+    global _db_connection
+    try:
+        if _db_connection is not None and not _db_connection.closed:
+            _db_connection.isolation_level
+            return _db_connection
+    except Exception:
+        try:
+            _db_connection.close()
+        except Exception:
+            pass
+        _db_connection = None
+
+    _db_connection = psycopg2.connect(DATABASE_URL)
+    _db_connection.autocommit = True
+    return _db_connection
 
 @mcp.tool()
 def getAveragesLeagueRankings(order: str = "desc"):
@@ -113,7 +143,7 @@ def getAveragesLeagueRankings(order: str = "desc"):
         return response.json()['rankings']
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {"error": "Request timed out. The backend server may be slow or unavailable."}
     except Exception as e:
         return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
@@ -142,7 +172,7 @@ def getTeams():
         return response.json()
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {"error": "Request timed out. The backend server may be slow or unavailable."}
     except Exception as e:
         return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
@@ -218,7 +248,7 @@ def getAverageStats(use_normalized: bool = False):
         
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {"error": "Request timed out. The backend server may be slow or unavailable."}
     except Exception as e:
         return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
@@ -360,7 +390,7 @@ def getTeamDetails(team_id: int):
         return response.json()
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {"error": "Request timed out. The backend server may be slow or unavailable."}
     except Exception as e:
         return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
@@ -480,7 +510,165 @@ def getLeagueShotsStats():
         return response.json()
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-    except httpx.TimeoutException as e:
+    except httpx.TimeoutException:
         return {"error": "Request timed out. The backend server may be slow or unavailable."}
+    except Exception as e:
+        return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
+
+
+@mcp.tool()
+def query_team_scores_snapshots(query: str):
+    """
+    Execute a READ-ONLY SQL query against the team_daily_snapshot table in PostgreSQL.
+
+    This is the historical database — it stores CUMULATIVE SEASON TOTALS for every team
+    as of each date. Each row is a complete snapshot: "here is where this team stands
+    on this date". The table goes back to the start of the season (Oct 22, 2025).
+
+    ONLY SELECT queries are allowed. INSERT, UPDATE, DELETE, DROP, etc. will be rejected.
+
+    ==========================================================================
+    TABLE: team_daily_snapshot
+    ==========================================================================
+
+    Each row = one team's cumulative season totals through a specific date.
+
+    COLUMNS:
+    -------------------------------------------------------------------------
+    IDENTITY:
+      id                  INT          - Auto-increment primary key
+      scoring_period_id   INT          - ESPN scoring period number (sequential day
+                                         number in the NBA season: 1, 2, 3...).
+                                         Maps 1:1 with date. Period 1 = Oct 22, 2025.
+      date                DATE         - Calendar date of this snapshot (e.g. 2026-03-05)
+      team_id             INT          - ESPN fantasy team ID (use getTeams() for mapping)
+      team_name           VARCHAR      - Team name (e.g. "50 Shades of Shai")
+
+    CUMULATIVE SEASON TOTALS (through this date):
+      gp                  INT          - Total games played by all players on this team
+                                         through this date (sum of player-games)
+      fgm                 INT          - Season total field goals MADE
+      fga                 INT          - Season total field goals ATTEMPTED
+      fg_pct              DECIMAL(6,4) - Season field goal %: fgm / fga (e.g. 0.4932)
+      ftm                 INT          - Season total free throws MADE
+      fta                 INT          - Season total free throws ATTEMPTED
+      ft_pct              DECIMAL(6,4) - Season free throw %: ftm / fta (e.g. 0.8082)
+      three_pm            INT          - Season total three-pointers made
+      reb                 INT          - Season total rebounds
+      ast                 INT          - Season total assists
+      stl                 INT          - Season total steals
+      blk                 INT          - Season total blocks
+      pts                 INT          - Season total points
+
+    METADATA:
+      created_at          TIMESTAMP    - When this row was inserted
+
+    UNIQUE KEYS:
+      (scoring_period_id, team_id) — one snapshot per team per scoring period
+      (date, team_id)              — one snapshot per team per date
+
+    INDEXES: id, scoring_period_id, date, team_id
+    -------------------------------------------------------------------------
+
+    IMPORTANT QUERY PATTERNS:
+
+    1. GET TOTALS AT A DATE (each row IS the totals):
+       SELECT team_name, gp, pts, reb, ast FROM team_daily_snapshot
+       WHERE date = '2026-03-05' ORDER BY pts DESC;
+
+    2. GET WHAT HAPPENED BETWEEN TWO DATES (subtract snapshots):
+       SELECT a.team_name, a.pts - b.pts AS period_pts, a.reb - b.reb AS period_reb
+       FROM team_daily_snapshot a
+       JOIN team_daily_snapshot b ON a.team_id = b.team_id
+       WHERE a.date = '2026-03-05' AND b.date = '2026-03-01';
+
+    3. GET AVERAGES AT A DATE (divide totals by gp):
+       SELECT team_name, pts * 1.0 / gp AS avg_pts, reb * 1.0 / gp AS avg_reb
+       FROM team_daily_snapshot WHERE date = '2026-03-05';
+
+    4. GET PERIOD AVERAGES (diff then divide):
+       SELECT a.team_name,
+              (a.pts - b.pts) * 1.0 / NULLIF(a.gp - b.gp, 0) AS avg_pts_march
+       FROM team_daily_snapshot a
+       JOIN team_daily_snapshot b ON a.team_id = b.team_id
+       WHERE a.date = '2026-03-05' AND b.date = '2026-03-01';
+
+    5. TREND OVER TIME (multiple snapshots):
+       SELECT date, pts, reb FROM team_daily_snapshot
+       WHERE team_id = 8 AND date >= '2026-02-01' ORDER BY date;
+
+    6. RANK TEAMS AT A DATE:
+       SELECT team_name, pts,
+              RANK() OVER (ORDER BY pts DESC) AS pts_rank
+       FROM team_daily_snapshot WHERE date = '2026-03-05';
+
+    7. LATEST AVAILABLE SNAPSHOT:
+       SELECT * FROM team_daily_snapshot
+       WHERE date = (SELECT MAX(date) FROM team_daily_snapshot)
+       ORDER BY pts DESC;
+
+    TIPS FOR THE AGENT:
+    - Each row is CUMULATIVE (season totals through that date), not a single-day stat.
+    - To get a single day or period, SUBTRACT two snapshots (newer - older).
+    - For percentages over a period, use raw makes/attempts:
+      (a.fgm - b.fgm) / NULLIF(a.fga - b.fga, 0) — NOT averaging fg_pct values.
+    - gp = total player-games (if a team has 10 players who each played 60 games = 600 gp).
+    - The table has 12 teams and ~137+ scoring periods, growing daily.
+    - Use LIMIT to avoid returning too many rows when exploring.
+    - Prefer specific date filters over full table scans.
+
+    Args:
+        query: A SQL SELECT statement to execute against the database.
+               MUST be a SELECT query. All other statements are rejected.
+               The query runs against the 'team_daily_snapshot' table.
+
+    Returns:
+        A dictionary with:
+        - "columns": list of column names in the result
+        - "rows": list of rows, each row is a dict mapping column name to value
+        - "row_count": number of rows returned
+        Or on error:
+        - "error": description of what went wrong
+    """
+    sanitized = query.strip().rstrip(";").strip()
+
+    if not re.match(r"(?i)^SELECT\s", sanitized):
+        return {"error": "Only SELECT queries are allowed. INSERT, UPDATE, DELETE, DROP, etc. are rejected."}
+
+    forbidden = re.compile(
+        r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|EXEC|EXECUTE|INTO\s+OUTFILE|COPY)\b",
+        re.IGNORECASE,
+    )
+    if forbidden.search(sanitized):
+        return {"error": "Query contains forbidden keywords. Only pure SELECT/read queries are allowed."}
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sanitized)
+        rows = cur.fetchall()
+        columns = [desc[0] for desc in cur.description] if cur.description else []
+        cur.close()
+
+        serialized_rows = []
+        for row in rows:
+            serialized_row = {}
+            for key, value in row.items():
+                if hasattr(value, "isoformat"):
+                    serialized_row[key] = value.isoformat()
+                elif isinstance(value, (int, float, str, bool, type(None))):
+                    serialized_row[key] = value
+                else:
+                    serialized_row[key] = str(value)
+            serialized_rows.append(serialized_row)
+
+        return {
+            "columns": columns,
+            "rows": serialized_rows,
+            "row_count": len(serialized_rows),
+        }
+
+    except psycopg2.Error as e:
+        return {"error": f"Database error: {str(e).strip()}"}
     except Exception as e:
         return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
