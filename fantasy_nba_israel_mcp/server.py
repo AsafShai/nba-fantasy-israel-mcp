@@ -42,6 +42,7 @@ import os
 import re
 import psycopg2
 import psycopg2.extras
+import pandas as pd
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -670,5 +671,235 @@ def query_team_scores_snapshots(query: str):
 
     except psycopg2.Error as e:
         return {"error": f"Database error: {str(e).strip()}"}
+    except Exception as e:
+        return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
+
+
+def _build_players_df() -> pd.DataFrame:
+    """Fetch all players from the API and return a flat DataFrame."""
+    response = httpx.get(
+        f"{BACKEND_API_URL}/players/",
+        params={"page": 1, "limit": 500},
+        timeout=15,
+    )
+    response.raise_for_status()
+    players = response.json()["players"]
+
+    df = pd.json_normalize(players, sep=".")
+    df.columns = [col.replace("stats.", "") for col in df.columns]
+    df["positions"] = df["positions"].astype(str)
+    return df
+
+
+@mcp.tool()
+def describePlayersDF():
+    """
+    Get statistical summary (describe) of all ~500 players in the league.
+
+    Call this BEFORE filterPlayers to understand the data distribution —
+    min, max, mean, std, quartiles for every numeric column, plus unique
+    counts for categorical columns.  Use the output to build smart, precise
+    filter expressions instead of loading the full player list.
+
+    AVAILABLE COLUMNS (use these names in filterPlayers):
+    -------------------------------------------------------
+    Identifiers / categorical:
+      player_name        str   Full name (e.g. "LeBron James")
+      pro_team           str   NBA team abbreviation (e.g. "LAL")
+      positions          str   Stringified list (e.g. "['PG', 'SG']")
+      team_id            int   Fantasy team ID — 0 means no fantasy team
+      status             str   "ONTEAM" | "FREEAGENT" | "WAIVERS"
+      injured            bool  True if player is currently injured
+      fantasy_team_name  str   Name of the owning fantasy team ("" if no team)
+
+    Ratings (overall composite score, higher = better):
+      season_rating  float  Full-season composite rating
+      last7_rating   float  Rating over the last 7 days
+      last15_rating  float  Rating over the last 15 days
+      last30_rating  float  Rating over the last 30 days
+
+    Season TOTALS (divide by gp to get per-game):
+      pts           float  Total points scored
+      reb           float  Total rebounds
+      ast           float  Total assists
+      stl           float  Total steals
+      blk           float  Total blocks
+      three_pm      float  Total three-pointers made
+      fgm           float  Total field goals made
+      fga           float  Total field goals attempted
+      ftm           float  Total free throws made
+      fta           float  Total free throws attempted
+      minutes       float  Total minutes played
+
+    Percentages (already computed):
+      fg_percentage float  Field-goal % as decimal (e.g. 0.551)
+      ft_percentage float  Free-throw % as decimal (e.g. 0.891)
+
+    Count:
+      gp            int    Total games played
+
+    HOW TO INTERPRET FOR TRADE ANALYSIS:
+    -------------------------------------------------------
+    - season_rating NaN count: the "count" row in describe shows how many players
+      have a valid rating. Players missing a rating must be excluded from all trade
+      comparisons — they have too little data to judge value fairly.
+    - season_rating mean (~5-8 typical): players above the 75th percentile are
+      elite trade assets; below 25th percentile are low-value.
+    - last30_rating vs season_rating: if last30 >> season, the player is trending
+      up (buy-high target). If last30 << season, they may be slumping (sell-high).
+    - gp: players with gp < 20 have unreliable stats — always flag in proposals.
+    - fg_percentage / ft_percentage: use the 25th/75th percentile values from
+      describe as your "weak" / "strong" shooting thresholds per category.
+    - Use the 75th percentile of pts/reb/ast/stl/blk as the "league strong"
+      benchmark when evaluating category contributions.
+    - injured: the describe "freq" row on the injured column shows how many
+      players are currently out — useful context before trade season.
+
+    Returns:
+        dict — result of df.describe(include='all').to_dict(), keyed by column name.
+    """
+    try:
+        df = _build_players_df()
+        return df.describe(include="all").to_dict()
+    except httpx.HTTPStatusError as e:
+        return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
+    except httpx.TimeoutException:
+        return {"error": "Request timed out. The backend server may be slow or unavailable."}
+    except Exception as e:
+        return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
+
+
+@mcp.tool()
+def filterPlayers(filters: str, limit: int = 100):
+    """
+    Filter the full ~500-player dataset using a pandas query expression and
+    return up to `limit` matching rows.
+
+    PURPOSE — SMART CONTEXT MANAGEMENT:
+    Loading all 500 players at once floods the context window and wastes tokens.
+    Instead, use describePlayersDF() first to understand the data distribution,
+    then craft a precise filter here to fetch only the players you actually need.
+    The default limit is 100 — prefer tight filters so you get far fewer rows.
+    Only raise the limit when the user explicitly needs a broad list.
+
+    AVAILABLE COLUMNS (valid names for filter expressions):
+    -------------------------------------------------------
+    player_name, pro_team, positions, team_id, status
+    injured, fantasy_team_name
+    season_rating, last7_rating, last15_rating, last30_rating
+    pts, reb, ast, stl, blk, three_pm, fgm, fga, ftm, fta, minutes, gp
+    fg_percentage, ft_percentage
+
+    NOTE: All stats (pts, reb, ast, …) are SEASON TOTALS.
+    For per-game averages use arithmetic inside the expression:
+      pts / gp > 20   →  players averaging 20+ points per game
+
+    FILTER EXPRESSION SYNTAX (pandas .query() string):
+      - Comparisons : pts / gp > 20
+      - Equality    : status == 'FREEAGENT'
+      - Membership  : pro_team in ['LAL', 'BOS']
+      - Combine     : status == 'FREEAGENT' and pts / gp > 15 and gp >= 30
+      - Contains    : player_name.str.contains('James')
+
+    COMMON FILTER EXAMPLES:
+      "status == 'FREEAGENT'"                                        — all free agents
+      "status == 'FREEAGENT' and pts / gp > 15"                     — FA averaging 15+ PPG
+      "injured == False and status == 'FREEAGENT'"                   — healthy free agents only
+      "season_rating > 10 and injured == False"                      — high-rated healthy players
+      "last7_rating > 15 and status == 'FREEAGENT'"                  — hot FAs last 7 days
+      "team_id == 5"                                                  — all players on fantasy team 5
+      "status != 'ONTEAM'"                                            — free agents + waivers
+      "blk / gp > 1.5 and gp >= 20"                                  — shot-blockers with enough GP
+      "fg_percentage > 0.50 and fga / gp > 5"                        — efficient shooters
+      "ast / gp > 6 and status == 'FREEAGENT'"                       — playmaking FAs
+
+    TRADE MISSION PLAYBOOK
+    -------------------------------------------------------
+    Follow this whenever the user asks about trades, swaps, offers, or improving
+    their team by exchanging players.
+
+    HARD FILTERS — use in EVERY filterPlayers call during trade analysis:
+      injured == False
+          — UNLESS the user explicitly named an injured player themselves.
+            In that case include them but warn: "This player is currently injured."
+      season_rating == season_rating
+          — NaN-safe trick: silently drops players with no rating data
+            (rarely played, just signed). Never include them in proposals.
+
+    FAIRNESS RULES:
+      FAIR       : |A.season_rating - B.season_rating| / A.season_rating < 0.15
+      SLIGHT GAP : 15-25% difference — mention it but may still recommend
+      UNFAIR     : > 25% difference — do NOT recommend
+      FORM CHECK : last30_rating also within ~15% confirms current form matches
+      SMALL SAMPLE: flag gp < 20 as "small sample — use with caution"
+
+    DETERMINE MODE from the user's message:
+      MODE A — user named a player they want to GIVE AWAY
+      MODE B — user named a player they want to ACQUIRE
+      MODE C — no preference ("suggest a trade", "help me", "I don't know")
+
+    MODE A — give away a specific player:
+      Step 1: filterPlayers("player_name.str.contains('<name>')") — confirm player,
+              note season_rating + last30_rating
+      Step 2: getAveragesLeagueRankings() — find your weak roto categories
+      Step 3: describePlayersDF() — understand league rating distribution
+      Step 4: filterPlayers("status=='ONTEAM' and injured==False
+               and season_rating==season_rating
+               and season_rating >= <seller*0.85> and season_rating <= <seller*1.15>")
+      Step 5: from results, narrow to last30_rating also within ~15% of seller's
+      Step 6: prefer candidates whose stats address your WEAK categories; exclude own team
+      Step 7: present top 3-5 — fantasy_team_name, ratings, category gain/loss, fairness
+
+    MODE B — acquire a specific player:
+      Step 1: filterPlayers to confirm target, get season_rating + last30_rating
+      Step 2: getTeamDetails(user_team_id) — see your full roster
+      Step 3: find your players within 15% of target's season_rating AND last30_rating
+      Step 4: getAveragesLeagueRankings() — offer from your STRONG categories
+      Step 5: present top 2-3 offers — category gain/loss + fairness label
+
+    MODE C — full auto:
+      Step 1: getAveragesLeagueRankings() — find 2-3 weakest + 2-3 strongest categories
+      Step 2: getTeamDetails(user_team_id) — full roster + ratings
+      Step 3: describePlayersDF() — understand league distributions (75th pct = "league strong")
+      Step 4: identify sell candidates from STRONG categories, not injured, have season_rating
+      Step 5: filterPlayers("status=='ONTEAM' and injured==False and season_rating==season_rating")
+              — all healthy rated rostered players; exclude own team_id
+      Step 6: match — season_rating within 15%, last30_rating within 15%, fills weak cats
+      Step 7: rank by category gain score
+      Step 8: present top 3 — fantasy_team_name, ratings, gain/loss per category, fairness
+
+    REMINDERS:
+      - Never propose your own players on both sides
+      - Always show fantasy_team_name so user knows who to contact
+      - If no fair trade exists, say so explicitly
+      - Never hallucinate player names — always confirm via filterPlayers first
+
+    Args:
+        filters : pandas query string (see examples above). Pass "" to return
+                  the top `limit` rows unfiltered (not recommended for large results).
+        limit   : maximum number of rows to return (default 100, max 500).
+                  Keep this low unless the user explicitly needs a wider list.
+
+    Returns:
+        A list of player dicts, each with keys:
+        player_name, pro_team, positions, team_id, status,
+        injured, fantasy_team_name,
+        season_rating, last7_rating, last15_rating, last30_rating,
+        pts, reb, ast, stl, blk, three_pm, fgm, fga, ftm, fta,
+        fg_percentage, ft_percentage, minutes, gp
+    """
+    try:
+        df = _build_players_df()
+
+        if filters and filters.strip():
+            df = df.query(filters)
+
+        df = df.head(limit)
+        return df.to_dict(orient="records")
+
+    except httpx.HTTPStatusError as e:
+        return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
+    except httpx.TimeoutException:
+        return {"error": "Request timed out. The backend server may be slow or unavailable."}
     except Exception as e:
         return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
