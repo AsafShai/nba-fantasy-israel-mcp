@@ -37,61 +37,37 @@ ROTISSERIE SCORING SYSTEM:
 """
 
 from mcp.server.fastmcp import FastMCP
-import httpx
-import os
-import re
-import psycopg2
-import psycopg2.extras
-from dotenv import load_dotenv
-
-load_dotenv()
+from fantasy_nba_israel_mcp.core import (
+    get_averages_league_rankings,
+    get_teams as _get_teams,
+    get_average_stats,
+    get_team_details,
+    get_league_shots_stats,
+    query_team_scores_snapshots as _query_snapshots,
+)
 
 mcp = FastMCP("fantasy-nba-israel-mcp")
 
-BACKEND_API_URL = "https://fantasyaverageweb.onrender.com/api"
-
-DATABASE_URL = os.environ.get("FANTASY_DB_URL", "")
-
-_db_connection = None
-
-
-def get_db_connection():
-    """Lazy connection with auto-reconnect. Creates on first use, reuses after."""
-    global _db_connection
-    try:
-        if _db_connection is not None and not _db_connection.closed:
-            _db_connection.isolation_level
-            return _db_connection
-    except Exception:
-        try:
-            _db_connection.close()
-        except Exception:
-            pass
-        _db_connection = None
-
-    _db_connection = psycopg2.connect(DATABASE_URL)
-    _db_connection.autocommit = True
-    return _db_connection
 
 @mcp.tool()
 def getAveragesLeagueRankings(order: str = "desc"):
     """
     Get the average league rankings from the API.
-    
+
     IMPORTANT - SCORING SYSTEM EXPLANATION:
     This is a ROTISSERIE (ROTO) fantasy league. Teams earn ranking points in 8 categories.
-    
+
     CRITICAL: Do NOT confuse "ranking points" with "rank position"!
     - Category values (fg_percentage, ast, reb, etc.) = POINTS earned (higher is better)
     - The "rank" field = actual position/place in standings (1 = first place)
-    
+
     HOW RANKING POINTS WORK:
     - In each category, teams are ranked 1st to Nth (where N = number of teams)
     - Best team in a category gets N points, second-best gets N-1, worst gets 1
     - Example in 12-team league: 1st place = 12 pts, 2nd = 11 pts, ..., 12th = 1 pt
     - total_points = sum of points from all 8 categories
     - Overall "rank" is determined by total_points (highest total = rank 1)
-    
+
     EXAMPLE in a 12-team league:
     {
         "team": {"team_name": "Best Team"},
@@ -103,13 +79,13 @@ def getAveragesLeagueRankings(order: str = "desc"):
         "rank": 1,             // Overall standing: 1st place
         "GP": 55               // Games played (informational only, not ranked)
     }
-    
+
     Args:
         order: Sort order for rankings.
                - "desc" = best to worst (top teams first, "from top to bottom", "מלמעלה למטה")
                - "asc" = worst to best (bottom teams first, "from bottom to top", "מלמטה למעלה")
                Default is "desc".
-    
+
     Returns:
         A list of teams with their rankings, total points, and stats per category.
         Each item in the list is a dictionary with the following keys: {
@@ -129,7 +105,7 @@ def getAveragesLeagueRankings(order: str = "desc"):
             "rank": <overall_position_1_is_first_place>,
             "GP": <games_played_not_ranked>
         }
-        
+
     NOTES:
     - Higher values in categories = better performance (more ranking points earned)
     - "rank" field is opposite: lower number = better (1 is first place)
@@ -138,60 +114,46 @@ def getAveragesLeagueRankings(order: str = "desc"):
     - If you refer to comparing teams, distinguish between rank and total points, so f.e someone can be 1st place 70 total points and another team can be 2nd place 69 total points.
     - In that case, the difference is 2 points, not 1 place.
     """
-    try:
-        response = httpx.get(f"{BACKEND_API_URL}/rankings?order={order}", timeout=10)
-        return response.json()['rankings']
-    except httpx.HTTPStatusError as e:
-        return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-    except httpx.TimeoutException:
-        return {"error": "Request timed out. The backend server may be slow or unavailable."}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
+    return get_averages_league_rankings(order)
+
 
 @mcp.tool()
 def getTeams():
     """
     Get the list of all teams in the fantasy league.
-    
+
     Use this endpoint to discover team IDs for use with other endpoints like getTeamDetails().
-    
+
     Returns:
         A list of teams with their team_id and team_name.
         Each item in the list is a dictionary with the following keys: {
             "team_id": <integer_team_identifier>,
             "team_name": <string_team_name>
         }
-        
+
     NOTES:
     - Team IDs are required for getTeamDetails(team_id)
     - Team names may contain emojis or special characters
     - The list includes all active teams in the league
     """
-    try:
-        response = httpx.get(f"{BACKEND_API_URL}/teams/", timeout=10)
-        return response.json()
-    except httpx.HTTPStatusError as e:
-        return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-    except httpx.TimeoutException:
-        return {"error": "Request timed out. The backend server may be slow or unavailable."}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
+    return _get_teams()
+
 
 @mcp.tool()
 def getAverageStats(use_normalized: bool = False):
     """
     Get the average statistics (actual performance numbers) for all teams from the API.
-    
+
     IMPORTANT: This returns ACTUAL PERFORMANCE STATS, NOT ranking points!
     - This is different from getAveragesLeagueRankings() which returns ranking points
     - Use this endpoint to see actual per-game averages (e.g., 25.3 assists per game)
     - Use getAveragesLeagueRankings() to see rotisserie ranking points (e.g., 12 points earned)
-    
+
     Args:
         use_normalized: If True, returns normalized data (0-1 scale) for comparison.
                        If False, returns raw statistical values (e.g., 45.6% FG, 12.3 AST).
                        Default is False.
-    
+
     Returns:
         A list of teams with their actual statistical averages per game.
         Each item in the list is a dictionary with the following structure:
@@ -212,72 +174,41 @@ def getAverageStats(use_normalized: bool = False):
                 "GP": <games_played>
             }
         }
-        
+
     NOTES:
     - Percentages are decimals (0.456 = 45.6%)
     - All counting stats (3PM, AST, REB, STL, BLK, PTS) are per-game averages
     - When use_normalized=True, all values are scaled 0-1 for heatmap visualization
     - GP (games played) is a total count, not an average
     """
-    try:
-        response = httpx.get(f"{BACKEND_API_URL}/analytics/heatmap", timeout=10)
-        response_data = response.json()
-        
-        categories = response_data['categories']
-        teams = response_data['teams']
-        data = response_data['normalized_data'] if use_normalized else response_data['data']
-        
-        # Transform data into user-friendly format
-        result = []
-        for team_index, team in enumerate(teams):
-            team_stats = {
-                "team": {
-                    "team_id": team["team_id"],
-                    "team_name": team["team_name"]
-                },
-                "stats": {}
-            }
-            
-            # Map each category to its corresponding value
-            for category_index, category_name in enumerate(categories):
-                team_stats["stats"][category_name] = data[team_index][category_index]
-            
-            result.append(team_stats)
-        
-        return result
-        
-    except httpx.HTTPStatusError as e:
-        return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-    except httpx.TimeoutException:
-        return {"error": "Request timed out. The backend server may be slow or unavailable."}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
+    return get_average_stats(use_normalized)
+
 
 @mcp.tool()
 def getTeamDetails(team_id: int):
     """
     Get comprehensive details for a specific team from the API.
-    
+
     This endpoint combines multiple data types for a single team:
     1. Raw statistical averages (actual performance numbers)
     2. Ranking points (rotisserie scoring system)
     3. Category ranks (position in each category, 1=best)
     4. Player roster with individual stats
-    
+
     IMPORTANT - Understanding the Data Sections:
-    
+
     "raw_averages" = Actual statistical performance (e.g., 45.6% FG, 12.3 assists per game)
     "ranking_stats" = Rotisserie points earned in each category (see explanation below)
     "category_ranks" = Ordinal position in each category (1=1st place, 2=2nd place, etc.)
     "shot_chart" = Raw totals for field goals and free throws (not averages)
-    
+
     RANKING STATS EXPLANATION (Same as getAveragesLeagueRankings):
     This is a ROTISSERIE (ROTO) fantasy league. Teams earn ranking points in 8 categories.
-    
+
     CRITICAL: Do NOT confuse "ranking points" with "category ranks"!
     - ranking_stats values (e.g., ast: 12.0) = POINTS earned (higher is better)
     - category_ranks values (e.g., AST: 1) = position/place (lower is better, 1 = first)
-    
+
     HOW RANKING POINTS WORK:
     - In each category, teams are ranked 1st to Nth (where N = number of teams)
     - Best team in a category gets N points, second-best gets N-1, worst gets 1
@@ -295,7 +226,7 @@ def getTeamDetails(team_id: int):
                 "team_name": <team_name>
             },
             "espn_url": <espn_team_page_url_string>,
-            
+
             "shot_chart": {
                 "team": {"team_id": <id>, "team_name": <name>},
                 "fgm": <total_field_goals_made>,
@@ -306,7 +237,7 @@ def getTeamDetails(team_id: int):
                 "ft_percentage": <calculated_free_throw_percentage_as_decimal>,
                 "gp": <games_played>
             },
-            
+
             "raw_averages": {
                 "fg_percentage": <average_field_goal_percentage_as_decimal>,
                 "ft_percentage": <average_free_throw_percentage_as_decimal>,
@@ -319,7 +250,7 @@ def getTeamDetails(team_id: int):
                 "gp": <games_played>,
                 "team": {"team_id": <id>, "team_name": <name>}
             },
-            
+
             "ranking_stats": {
                 "team": {"team_id": <id>, "team_name": <name>},
                 "fg_percentage": <ranking_points_earned_in_fg_percentage>,
@@ -334,7 +265,7 @@ def getTeamDetails(team_id: int):
                 "total_points": <sum_of_all_8_category_ranking_points>,
                 "rank": <overall_standing_1_is_first_place>
             },
-            
+
             "category_ranks": {
                 "FG%": <ranking_points_earned_in_fg_percentage>,
                 "FT%": <ranking_points_earned_in_ft_percentage>,
@@ -345,7 +276,7 @@ def getTeamDetails(team_id: int):
                 "BLK": <ranking_points_earned_in_blocks>,
                 "PTS": <ranking_points_earned_in_points>
             },
-            
+
             "players": [
                 {
                     "player_name": <player_full_name_string>,
@@ -371,13 +302,13 @@ def getTeamDetails(team_id: int):
                 }
             ]
         }
-        
+
     EXAMPLE - Understanding the Different Data Types:
     If a team shows:
     - raw_averages.ast: 25.3 → Team averages 25.3 assists per game (actual performance)
     - ranking_stats.ast: 12.0 → Team earned 12 ranking points in assists (1st place in 12-team league)
     - category_ranks.AST: 1 → Team is ranked 1st in assists category
-    
+
     NOTES:
     - Higher ranking_stats values = more points earned = better
     - Lower category_ranks values = better position (1 is first place)
@@ -385,98 +316,14 @@ def getTeamDetails(team_id: int):
     - GP (games played) is informational only, not used in ranking calculations
     - When referring to steals in Hebrew, use חטיפות (not גניבות)
     """
-    try:
-        response = httpx.get(f"{BACKEND_API_URL}/teams/{team_id}", timeout=10)
-        return response.json()
-    except httpx.HTTPStatusError as e:
-        return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-    except httpx.TimeoutException:
-        return {"error": "Request timed out. The backend server may be slow or unavailable."}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
+    return get_team_details(team_id)
 
-# @mcp.tool()
-# def getAllPlayers(page: int = 1, limit: int = 500):
-#     """
-#     Get all players from the API with pagination support.
-    
-#     This endpoint returns ALL players in the fantasy league including:
-#     - Players currently on fantasy teams (status: "ONTEAM")
-#     - Free agents available for pickup (status: "FREEAGENT")  
-#     - Players on waivers (status: "WAIVERS")
-    
-#     Args:
-#         page: The page number to retrieve. Use this to paginate through large player lists.
-#               Default is 1 (first page). Minimum value is 1.
-#         limit: Number of players to return per page. This controls how many players
-#                you get in a single request. Default is 500 (maximum allowed).
-#                Valid range: 10-500 players per page.
-    
-#     Returns:
-#         A paginated response object containing player data and pagination metadata.
-#         The response is a dictionary with the following structure: {
-#             "players": [
-#                 {
-#                     "player_name": <string, e.g., "LeBron James">,
-#                     "pro_team": <string, NBA team abbreviation, e.g., "LAL">,
-#                     "positions": <list of strings, e.g., ["SF", "PF"]>,
-#                     "stats": {
-#                         "pts": <int, total points>,
-#                         "reb": <int, total rebounds>,
-#                         "ast": <int, total assists>,
-#                         "stl": <int, total steals>,
-#                         "blk": <int, total blocks>,
-#                         "fgm": <int, total field goals made>,
-#                         "fga": <int, total field goals attempted>,
-#                         "ftm": <int, total free throws made>,
-#                         "fta": <int, total free throws attempted>,
-#                         "fg_percentage": <float, field goal percentage as decimal (e.g., 0.456 = 45.6%)>,
-#                         "ft_percentage": <float, free throw percentage as decimal (e.g., 0.850 = 85.0%)>,
-#                         "three_pm": <int, total three-pointers made>,
-#                         "minutes": <int, total minutes played>,
-#                         "gp": <int, total games played>
-#                     },
-#                     "team_id": <int, fantasy team ID (0 if not on a team)>,
-#                     "status": <string, one of: "ONTEAM", "FREEAGENT", "WAIVERS">
-#                 }
-#             ],
-#             "total_count": <int, total number of players across all pages>,
-#             "page": <int, current page number>,
-#             "limit": <int, players per page in this response>,
-#             "has_more": <boolean, true if there are more pages available>
-#         }
-    
-#     Example Usage:
-#         - Get first 500 players: getAllPlayers()
-#         - Get next 500 players: getAllPlayers(page=2)
-#         - Get 100 players at a time: getAllPlayers(limit=100)
-#         - Get second page with 100 per page: getAllPlayers(page=2, limit=100)
-    
-#     Notes:
-#         - Use the "status" field to filter between rostered players, free agents, and waivers
-#         - Use "has_more" to determine if you need to fetch additional pages
-#         - "total_count" tells you the total number of players available
-#         - All stats are averaged per game except "gp" which is total games played
-#     """
-#     try:
-#         response = httpx.get(
-#             f"{BACKEND_API_URL}/players/",
-#             params={"page": page, "limit": limit},
-#             timeout=10
-#         )
-#         return response.json()
-#     except httpx.HTTPStatusError as e:
-#         return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-#     except httpx.TimeoutException as e:
-#         return {"error": "Request timed out. The backend server may be slow or unavailable."}
-#     except Exception as e:
-#         return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
 
 @mcp.tool()
 def getLeagueShotsStats():
     """
     Get league-wide shooting statistics (field goals and free throws) for all teams.
-    
+
     This endpoint provides CUMULATIVE TOTALS (not per-game averages) for shooting stats.
     Useful for understanding overall team shooting efficiency across the season.
 
@@ -505,15 +352,7 @@ def getLeagueShotsStats():
     - Percentages are returned as decimals (e.g., 0.456 = 45.6%)
     - The list contains one entry per team with their complete shooting profile
     """
-    try:
-        response = httpx.get(f"{BACKEND_API_URL}/league/shots", timeout=10)
-        return response.json()
-    except httpx.HTTPStatusError as e:
-        return {"error": f"HTTP status error: {e.response.status_code} {e.response.text}"}
-    except httpx.TimeoutException:
-        return {"error": "Request timed out. The backend server may be slow or unavailable."}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
+    return get_league_shots_stats()
 
 
 @mcp.tool()
@@ -630,45 +469,4 @@ def query_team_scores_snapshots(query: str):
         Or on error:
         - "error": description of what went wrong
     """
-    sanitized = query.strip().rstrip(";").strip()
-
-    if not re.match(r"(?i)^SELECT\s", sanitized):
-        return {"error": "Only SELECT queries are allowed. INSERT, UPDATE, DELETE, DROP, etc. are rejected."}
-
-    forbidden = re.compile(
-        r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|EXEC|EXECUTE|INTO\s+OUTFILE|COPY)\b",
-        re.IGNORECASE,
-    )
-    if forbidden.search(sanitized):
-        return {"error": "Query contains forbidden keywords. Only pure SELECT/read queries are allowed."}
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(sanitized)
-        rows = cur.fetchall()
-        columns = [desc[0] for desc in cur.description] if cur.description else []
-        cur.close()
-
-        serialized_rows = []
-        for row in rows:
-            serialized_row = {}
-            for key, value in row.items():
-                if hasattr(value, "isoformat"):
-                    serialized_row[key] = value.isoformat()
-                elif isinstance(value, (int, float, str, bool, type(None))):
-                    serialized_row[key] = value
-                else:
-                    serialized_row[key] = str(value)
-            serialized_rows.append(serialized_row)
-
-        return {
-            "columns": columns,
-            "rows": serialized_rows,
-            "row_count": len(serialized_rows),
-        }
-
-    except psycopg2.Error as e:
-        return {"error": f"Database error: {str(e).strip()}"}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred: {e.__class__.__name__}: {str(e)}"}
+    return _query_snapshots(query)
